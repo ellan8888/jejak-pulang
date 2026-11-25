@@ -137,18 +137,17 @@ public struct TurnDetector: Sendable {
         for cluster in clusters {
             guard let first = cluster.first, let last = cluster.last,
                   let peak = cluster.max(by: { abs($0.angle) < abs($1.angle) }) else { continue }
-            let angle: Double
-            if cluster.count == 1 {
-                angle = first.angle
-            } else {
-                let s0 = max(0, first.along - armLength)
-                let s1 = min(path.length, last.along + armLength)
-                guard let a = path.point(at: s0), let b = path.point(at: first.along),
-                      let c = path.point(at: last.along), let d = path.point(at: s1) else { continue }
-                let inBearing = Geo.bearing(a, b)
-                let outBearing = Geo.bearing(c, d)
-                angle = Geo.turnAngle(from: inBearing, to: outBearing)
-            }
+            // Sudut akhir diukur dari ruas lurus SEBELUM dan SESUDAH seluruh tikungan,
+            // supaya tikungan lengkung (yang titik sudutnya bisa jatuh di tengah) terukur utuh.
+            let inner = armLength * 1.25, outer = armLength * 2.5
+            guard let a = path.point(at: max(0, first.along - outer)),
+                  let b = path.point(at: max(0, first.along - inner)),
+                  let c = path.point(at: min(path.length, last.along + inner)),
+                  let d = path.point(at: min(path.length, last.along + outer)) else { continue }
+            let wide = Geo.turnAngle(from: Geo.bearing(a, b), to: Geo.bearing(c, d))
+            // Pakai yang lebih besar: ukuran lebar untuk lengkungan, ukuran dekat untuk simpang rapat.
+            let near = cluster.count == 1 ? first.angle : wide
+            let angle = abs(wide) >= abs(near) ? wide : near
             if abs(angle) >= threshold {
                 turns.append(DetectedTurn(coordinate: coords[peak.index], along: peak.along, angle: angle))
             }
