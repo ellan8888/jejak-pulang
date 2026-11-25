@@ -1,0 +1,103 @@
+name: Build iPhone app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      VERSION: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Test RouteCore (logika rute)
+        run: swift test --package-path RouteCore
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (tanpa tanda tangan, untuk SideStore)
+        run: |
+          xcodebuild -project JejakPulang.xcodeproj -scheme JejakPulang \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || { grep -E "error:" -A4 build.log | head -150; tail -40 build.log; exit 1; }
+          grep -E "warning:" build.log | grep -v "/SourcePackages/" | sort -u | head -50 || true
+
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/JejakPulang.app Payload/
+          zip -qry JejakPulang.ipa Payload
+          ls -la JejakPulang.ipa
+
+      - name: SideStore/AltStore source
+        run: |
+          SIZE=$(stat -f%z JejakPulang.ipa)
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          BASE="https://github.com/${{ github.repository }}/releases/download/latest"
+          ICON="https://raw.githubusercontent.com/${{ github.repository }}/main/JejakPulang/Assets.xcassets/AppIcon.appiconset/icon-1024.png"
+          cat > source.json <<EOF
+          {
+            "name": "Jejak Pulang",
+            "identifier": "com.ellan8888.jejakpulang.source",
+            "apps": [
+              {
+                "name": "Jejak Pulang",
+                "bundleIdentifier": "com.ellan8888.jejakpulang",
+                "developerName": "Al",
+                "localizedDescription": "Rekam jalan pergi, pulang lewat rute yang sama dengan Google Maps.",
+                "iconURL": "$ICON",
+                "versions": [
+                  {
+                    "version": "$VERSION",
+                    "buildVersion": "${{ github.run_number }}",
+                    "date": "$DATE",
+                    "downloadURL": "$BASE/JejakPulang.ipa",
+                    "size": $SIZE,
+                    "minOSVersion": "17.0"
+                  }
+                ],
+                "appPermissions": { "entitlements": [], "privacy": {} }
+              }
+            ],
+            "news": []
+          }
+          EOF
+          cat source.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JejakPulang-${{ env.VERSION }}
+          path: |
+            JejakPulang.ipa
+            build.log
+
+      - name: Publish release "latest"
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest JejakPulang.ipa source.json \
+            --target "${{ github.sha }}" \
+            --title "Jejak Pulang $VERSION" \
+            --notes "Unduh JejakPulang.ipa lalu pasang lewat SideStore. Versi $VERSION (commit ${{ github.sha }})." \
+            --latest

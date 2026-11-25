@@ -1,0 +1,9 @@
+*.xcodeproj/
+build/
+.build/
+Payload/
+*.ipa
+DerivedData/
+.swiftpm/
+JejakPulang/Info.plist
+.DS_Store
