@@ -84,7 +84,8 @@ final class OneWayChecker: ObservableObject {
         let reps = segments.filter { $0.flagged && $0.useDetour && $0.detour.count >= 2 }.map {
             PathReplacement(startAlong: $0.range.lowerBound, endAlong: $0.range.upperBound, coordinates: $0.detour)
         }
-        return PathComposer.splice(path, replacements: reps)
+        let r = PathComposer.splice(path, replacements: reps)
+        return (r.path, r.replaced)
     }
 
     // MARK: - MKDirections
