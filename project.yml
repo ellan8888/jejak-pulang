@@ -44,6 +44,7 @@ targets:
           - UIInterfaceOrientationPortrait
         UIBackgroundModes:
           - location
+          - audio
         NSLocationWhenInUseUsageDescription: Lokasi dipakai untuk merekam jalur perjalananmu, supaya bisa dipakai lagi untuk pulang lewat jalan yang sama.
         NSLocationAlwaysAndWhenInUseUsageDescription: Lokasi dipakai untuk terus merekam jalur perjalanan walaupun layar terkunci.
         LSApplicationQueriesSchemes:

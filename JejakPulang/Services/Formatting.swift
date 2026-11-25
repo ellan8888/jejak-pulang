@@ -35,6 +35,21 @@ enum Fmt {
 
     static func date(_ d: Date) -> String { dateFormatter.string(from: d) }
 
+    static func minutes(_ seconds: TimeInterval) -> String {
+        let m = max(1, Int((seconds / 60).rounded()))
+        if m < 60 { return "\(m) mnt" }
+        return String(format: "%d j %02d mnt", m / 60, m % 60)
+    }
+
+    static let clockFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "id_ID")
+        f.dateFormat = "HH.mm"
+        return f
+    }()
+
+    static func clock(_ d: Date) -> String { clockFormatter.string(from: d) }
+
     static func turn(_ w: PlannedWaypoint) -> String {
         switch w.kind {
         case .manual: return "Titik tambahan"

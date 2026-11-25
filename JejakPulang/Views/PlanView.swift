@@ -16,6 +16,17 @@ struct PlanView: View {
     @State private var addMode = false
     @State private var opened: Set<Int> = []
     @State private var hint: String?
+    @StateObject private var oneWay = OneWayChecker()
+    /// Path dasar navigasi jejak (putar-balik karena salah jalan sudah dibuang).
+    @State private var navBase: MeasuredPath?
+    @State private var navTarget: NavTarget?
+
+    struct NavTarget: Identifiable {
+        let id = UUID()
+        let path: MeasuredPath
+        let maneuvers: [Maneuver]
+        let detours: [ClosedRange<Double>]
+    }
 
     private var travelMode: TravelMode { TravelMode(rawValue: travelModeRaw) ?? .driving }
 
@@ -54,6 +65,8 @@ struct PlanView: View {
                 .pickerStyle(.segmented)
             }
 
+            trackNavigationSection
+
             linksSection
 
             Section {
@@ -79,8 +92,18 @@ struct PlanView: View {
         }
         .navigationTitle(direction == .returnTrip ? "Pulang" : "Pergi lagi")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { if plan == nil { rebuild() } }
+        .onAppear {
+            if plan == nil { rebuild() }
+            runOneWayCheck()
+        }
+        .onDisappear { oneWay.cancel() }
         .onChange(of: sensitivity) { rebuild() }
+        .onChange(of: travelModeRaw) { runOneWayCheck() }
+        .fullScreenCover(item: $navTarget) { t in
+            TrackNavigationView(path: t.path, maneuvers: t.maneuvers, detours: t.detours,
+                                travelMode: travelMode,
+                                destinationName: direction == .returnTrip ? "Awal/Rumah" : route.name)
+        }
     }
 
     // MARK: - Peta
@@ -102,6 +125,17 @@ struct PlanView: View {
                            systemImage: direction == .returnTrip ? "house.fill" : "flag.fill",
                            coordinate: plan.destination.cl)
                         .tint(.green)
+                    ForEach(oneWay.flagged.filter(\.useDetour)) { seg in
+                        MapPolyline(coordinates: seg.detour.map(\.cl))
+                            .stroke(.purple, lineWidth: 4)
+                    }
+                    ForEach(oneWay.flagged) { seg in
+                        Annotation("", coordinate: seg.midpoint.cl) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.yellow, .black)
+                                .font(.title3)
+                        }
+                    }
                     ForEach(plan.waypoints.filter { !$0.isEnabled }) { w in
                         Annotation("", coordinate: w.coordinate.cl) {
                             Circle().fill(.gray).frame(width: 9, height: 9)
@@ -194,7 +228,7 @@ struct PlanView: View {
                 }
             }
         } header: {
-            Text("Navigasi")
+            Text("Atau lewat Google Maps")
         } footer: {
             if links.count > 1 {
                 Text("Mulai dari Bagian 1. Setelah sampai di akhir bagian itu, kembali ke aplikasi ini dan buka bagian berikutnya. Tekan lama untuk menyalin link.")
@@ -260,5 +294,95 @@ struct PlanView: View {
         plan = planner.makePlan(route: route, direction: direction,
                                 sensitivity: sensitivity, keepingManual: manual)
         opened = []
+        if navBase == nil, let plan {
+            let raw = MeasuredPath(plan.path)
+            let spurs = PathComposer.backtrackSpurs(in: raw)
+            navBase = spurs.isEmpty ? raw : PathComposer.splice(raw, replacements: spurs).path
+        }
+    }
+
+    // MARK: - Navigasi jejak
+
+    private func runOneWayCheck() {
+        guard let navBase else { return }
+        oneWay.run(path: navBase, travelMode: travelMode)
+    }
+
+    private func startNavigation() {
+        guard let navBase else { return }
+        let composed = oneWay.composedPath(from: navBase)
+        let maneuvers = ManeuverBuilder.build(path: composed.path, detours: composed.detours,
+                                              threshold: min(sensitivity.threshold, 40))
+        navTarget = NavTarget(path: composed.path, maneuvers: maneuvers, detours: composed.detours)
+    }
+
+    private var trackNavigationSection: some View {
+        Section {
+            Button {
+                startNavigation()
+            } label: {
+                Label("Mulai Navigasi Jejak", systemImage: "location.north.line.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(navBase == nil)
+
+            oneWayStatus
+
+            ForEach(oneWay.flagged) { seg in
+                Toggle(isOn: detourBinding(seg.id)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pakai jalan memutar di \(Fmt.distance(seg.range.lowerBound)) dari mulai")
+                        Text("Rekaman \(Fmt.distance(seg.recordedLength)) · Apple Maps \(Fmt.distance(seg.routedLength ?? 0))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } header: {
+            Text("Navigasi jejak (persis)")
+        } footer: {
+            Text("Dipandu suara di jalur rekaman yang sama persis, langsung di aplikasi ini. Bagian yang kemungkinan jalan satu arah diganti jalan memutar (ungu). Matikan sakelarnya kalau kamu yakin jalan itu dua arah.")
+        }
+    }
+
+    @ViewBuilder private var oneWayStatus: some View {
+        switch oneWay.status {
+        case .idle:
+            EmptyView()
+        case .checking(let done, let total):
+            HStack(spacing: 10) {
+                ProgressView()
+                Text("Mengecek jalan satu arah ke Apple Maps… \(done)/\(total)")
+                    .font(.subheadline)
+            }
+        case .finished:
+            if oneWay.flagged.isEmpty {
+                Label("Tidak ada jalan satu arah terdeteksi", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.green)
+            } else {
+                Label("\(oneWay.flagged.count) bagian kemungkinan jalan satu arah — jalan memutar disiapkan",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+            }
+        case .failed(let msg), .skipped(let msg):
+            Label(msg, systemImage: "info.circle")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func detourBinding(_ id: Int) -> Binding<Bool> {
+        Binding(
+            get: { oneWay.segments.first { $0.id == id }?.useDetour ?? false },
+            set: { v in
+                if let i = oneWay.segments.firstIndex(where: { $0.id == id }) {
+                    oneWay.segments[i].useDetour = v
+                }
+            })
     }
 }

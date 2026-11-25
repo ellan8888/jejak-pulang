@@ -6,7 +6,10 @@ Aplikasi iPhone untuk merekam jalan waktu pergi ke lokasi yang tidak ada di Goog
 
 1. **Sebelum berangkat**, buka Jejak Pulang lalu tekan **Mulai Rekam**. Izinkan akses lokasi. Setelah itu boleh kunci layar atau buka aplikasi lain, rekaman tetap jalan (ada indikator biru di status bar).
 2. **Sampai di lokasi**, tekan **Sampai — Selesai & Simpan**, lalu beri nama.
-3. **Mau pulang**: buka rute itu → **Pulang lewat rute ini**.
+3. **Mau pulang**: buka rute itu → **Pulang lewat rute ini** → **Mulai Navigasi Jejak**.
+   - Navigasi langsung di aplikasi, dengan suara bahasa Indonesia, mengikuti garis rekaman **persis**. Ada peringatan kalau keluar jalur, dan bagian salah jalan (putar balik) dibuang otomatis.
+   - Sebelum berangkat, tiap ruas dicek ke Apple Maps. Ruas yang kemungkinan **jalan satu arah** diganti jalan memutar (garis ungu). Sakelarnya bisa dimatikan kalau kamu yakin jalannya dua arah.
+   - Cadangan: **Buka di Google Maps** (lewat titik singgah).
    - Aplikasi membalik rute, mendeteksi belokan, dan menaruh titik singgah sedikit sesudah tiap belokan.
    - Tekan **Buka di Google Maps**. Kalau belokannya lebih dari 9, rute dipecah jadi **Bagian 1, 2, …**. Buka bagian berikutnya setelah sampai di akhir bagian sebelumnya.
    - **Tambah titik**: ketuk garis rute di peta untuk memaksa lewat jalan tertentu.

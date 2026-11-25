@@ -121,13 +121,36 @@ public struct MeasuredPath: Sendable {
     /// Proyeksikan koordinat ke titik terdekat pada path. Mengembalikan titik tersebut,
     /// jarak tempuhnya, dan jarak tegak lurusnya dari path.
     public func nearest(to c: Coordinate) -> (point: Coordinate, along: Double, offset: Double)? {
+        nearest(to: c, alongRange: nil)
+    }
+
+    /// Indeks ruas yang memuat jarak tempuh `s`.
+    func segmentIndex(at s: Double) -> Int {
+        guard cumulative.count > 1 else { return 0 }
+        var lo = 0, hi = cumulative.count - 1
+        while hi - lo > 1 {
+            let mid = (lo + hi) / 2
+            if cumulative[mid] <= s { lo = mid } else { hi = mid }
+        }
+        return lo
+    }
+
+    /// Seperti `nearest(to:)`, tapi hanya mencari di ruas yang beririsan dengan `alongRange`.
+    public func nearest(to c: Coordinate, alongRange: ClosedRange<Double>?)
+        -> (point: Coordinate, along: Double, offset: Double)? {
         guard !coordinates.isEmpty else { return nil }
         if coordinates.count == 1 {
             return (coordinates[0], 0, Geo.distance(coordinates[0], c))
         }
+        var first = 0, last = coordinates.count - 2
+        if let r = alongRange {
+            first = segmentIndex(at: max(0, r.lowerBound))
+            last = min(coordinates.count - 2, segmentIndex(at: min(length, r.upperBound)))
+            if last < first { last = first }
+        }
         let proj = LocalProjection(origin: c)
         var best: (point: Coordinate, along: Double, offset: Double)?
-        for i in 0..<(coordinates.count - 1) {
+        for i in first...last {
             let a = proj.project(coordinates[i])
             let b = proj.project(coordinates[i + 1])
             // c berada di (0,0) dalam proyeksi ini
